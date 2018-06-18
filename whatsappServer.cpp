@@ -3,6 +3,8 @@
 //
 
 #include "whatsappio.h"
+#include "ex4_utils.h"
+
 #define MAXHOSTNAME 30
 #define MAX_CLIENTS 200
 #define MAX_PENDING_CONNECTIONS 10
@@ -18,6 +20,7 @@
 #include <clocale>
 #include <cstring>
 #include <vector>
+#include <algorithm>
 
 int write_data(int s,const char *buf, int n)
 
@@ -46,72 +49,42 @@ struct client {
     std::string str_name;
     char name[WA_MAX_NAME];
 };
-char message_buffer[WA_MAX_MESSAGE];
+//char message_buffer[WA_MAX_MESSAGE + 1];
 
 fd_set clientsfds;
 fd_set readfds;
-std::vector<client> client_vector;
 
-int read_data(int s, char *buf, int n) {
-    int bcount;
-/* counts bytes read */
-    int br;
-/* bytes read this pass */
-    bcount= 0; br= 0;
-    while (bcount < n) { /* loop until full buffer */
-        br = (int)read(s, buf, n-bcount);
-        if (br > 0) {
-            bcount += br;
-            if (buf[strlen(buf) - 1] == '\n')
-            {
-                buf += br;
-                return(bcount);
-            }
-            buf += br;
-        }
-        if (br < 1) {
-            return(-1);
-        }
-    }
-    return(bcount);
-}
-
-
-int get_connection(int server_socket_file_descriptor) {
-    int t; /* socket of connection */
-    if ((t = accept(server_socket_file_descriptor,NULL,NULL)) < 0)
-        exit(1);
-    return t;
-}
 
 void terminateServer()
 {
     exit(0);
 };
-void connectNewClient(int server_socket_file_descriptor){
+
+int connectNewClient(int server_socket_file_descriptor,std::vector<client>* client_vector ){
     std::cout << "a client want to connect! " << std::endl;
-    int new_client_socket_file_descriptor = get_connection(server_socket_file_descriptor);
+    int new_client_socket_file_descriptor = accept(server_socket_file_descriptor,NULL,NULL);
+    if (new_client_socket_file_descriptor < 0)
+    {
+        print_fail_connection();
+        return 0;
+    }
+
     std::cout << "a new socket has been created, num: " << new_client_socket_file_descriptor << std::endl;
 
     struct client cur_client;
     cur_client.fid = new_client_socket_file_descriptor;
-    client_vector.push_back(cur_client);
+    client_vector->push_back(cur_client);
 
-    read_data(cur_client.fid, message_buffer, WA_MAX_MESSAGE-1);
-    message_buffer[WA_MAX_MESSAGE-1] = 0;
-    std::string str1 (message_buffer);
-    std::cout << "fresh client read: " << str1 <<std::endl;
-    FD_SET(cur_client.fid, &clientsfds);
+    int a = 6;
+
 };
 
 void serverStdInput(){
-    read_data(STDIN_FILENO, message_buffer, WA_MAX_MESSAGE-1);
-    message_buffer[WA_MAX_MESSAGE-1] = 0;
-    std::string str1 (message_buffer);
+    std::pair<std::string,int> a = read_data_from_socket(STDIN_FILENO);
 //    std::cout << "read from stdin: " << message_buffer << " with len: " << str1.length() << std::endl;
     std::string str2 ("EXIT\n");
 
-    if ((str1.compare(str2)) == 0)
+    if ((a.first.compare(str2)) == 0)
     {
         terminateServer();
     }
@@ -119,26 +92,24 @@ void serverStdInput(){
 };
 
 
-void handleClientRequest(){
-    std::vector<struct client> client_vector2 = client_vector;
-    for (int i=0; i<client_vector.size(); i++)
-    {
-        if (FD_ISSET(client_vector[i].fid, &readfds))
-        {
-            int fid = client_vector[i].fid;
-            read_data(fid, message_buffer, WA_MAX_MESSAGE-1);
-            message_buffer[WA_MAX_MESSAGE-1] = 0;
-            std::string str1 (message_buffer);
-            std::cout << "request from client: " << str1 << " with len: " << str1.length() << " client num: " <<client_vector[i].fid << std::endl;
-            FD_SET(client_vector[i].fid, &clientsfds);
-            std::string str2 ("got it");
-            write_data(client_vector[i].fid, str2.c_str(), str2.length());
 
-        }
+void handleClientRequest(int fid, std::vector<client>* client_vector){
+    std::vector<struct client> client_vector2 = *client_vector;
+    std::pair<std::string,int> a= read_data_from_socket(fid);
+    if (a.second)
+    {
+        std::cout << "server recognized disconnection \n";
+        //TODO remove it from vector
     }
+    std::cout << "server got: "<< a.first;
 };
+
+
 int main(int argc, char *argv[])
 {
+
+    std::vector<client> client_vector;
+
     //input validation
     if ((argc != 2) )
     {
@@ -189,12 +160,21 @@ int main(int argc, char *argv[])
     listen(server_socket_file_descriptor, MAX_PENDING_CONNECTIONS);
 
 
-    FD_ZERO(&clientsfds);
-    FD_SET(server_socket_file_descriptor, &clientsfds);
-    FD_SET(STDIN_FILENO, &clientsfds);
     int stillRunning = 1;
     while (stillRunning)
     {
+        FD_ZERO(&clientsfds);
+        FD_SET(server_socket_file_descriptor, &clientsfds);
+        FD_SET(STDIN_FILENO, &clientsfds);
+        int  a = client_vector.size();
+        if (a){
+            int b = client_vector[0].fid;
+            int c = 7;
+        }
+        for (int i=0; i<client_vector.size(); i++)
+        {
+            FD_SET(client_vector[i].fid, &clientsfds);
+        }
         readfds = clientsfds;
         if (select(MAX_CLIENTS+1, &readfds, NULL,NULL, NULL) < 0)
         {
@@ -202,21 +182,25 @@ int main(int argc, char *argv[])
             return -1;
         }
 
-        else if (FD_ISSET(server_socket_file_descriptor, &readfds))
+        if (FD_ISSET(server_socket_file_descriptor, &readfds))
         {
             //will also add the client to the clientsfds
-            connectNewClient(server_socket_file_descriptor);
+            connectNewClient(server_socket_file_descriptor, &client_vector);
+            continue;
         }
 
-        else if (FD_ISSET(STDIN_FILENO, &readfds))
+        if (FD_ISSET(STDIN_FILENO, &readfds))
         {
             serverStdInput();
         }
 
-        else {
-            //will check each client if it’s in readfds
-            //and then receive a message from him
-            handleClientRequest();
+        for (int i=0; i<client_vector.size(); i++)
+        {
+            int client_fid = client_vector[i].fid;
+            if(FD_ISSET(client_fid, &readfds))
+            {
+                handleClientRequest(client_fid, &client_vector);
+            }
         }
     }
 

@@ -2,6 +2,7 @@
 // Created by danielbraun on 6/18/18.
 //
 #include "whatsappio.h"
+#include "ex4_utils.h"
 #include <iostream>
 #include <netdb.h>
 #include <unistd.h>
@@ -127,10 +128,7 @@ int main(int argc, char *argv[])
 //    send(client_socket_file_descriptor, (const void *)(&client_name), client_name.length() );
     while(1){
         getchar();
-        write_data(client_socket_file_descriptor, client_name.c_str(), client_name.length());
-        write_data(client_socket_file_descriptor, "\n", 1);
-        printf("written client name");
-        std::cout << argv[1];
+        write_data_to_socket(client_socket_file_descriptor, client_name);
         getchar();
         read_data(client_socket_file_descriptor, message_buffer, WA_MAX_MESSAGE-1);
         message_buffer[WA_MAX_MESSAGE-1] = 0;
