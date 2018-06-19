@@ -21,6 +21,7 @@
 #include <cstring>
 #include <vector>
 #include <algorithm>
+#include <map>
 
 int write_data(int s,const char *buf, int n)
 
@@ -51,8 +52,7 @@ struct client {
 };
 //char message_buffer[WA_MAX_MESSAGE + 1];
 
-fd_set clientsfds;
-fd_set readfds;
+
 
 
 void terminateServer()
@@ -60,7 +60,7 @@ void terminateServer()
     exit(0);
 };
 
-int connectNewClient(int server_socket_file_descriptor,std::vector<client>* client_vector ){
+int connectNewClient(int server_socket_file_descriptor, std::map<int, std::string> * client_maps ){
     std::cout << "a client want to connect! " << std::endl;
     int new_client_socket_file_descriptor = accept(server_socket_file_descriptor,NULL,NULL);
     if (new_client_socket_file_descriptor < 0)
@@ -70,13 +70,7 @@ int connectNewClient(int server_socket_file_descriptor,std::vector<client>* clie
     }
 
     std::cout << "a new socket has been created, num: " << new_client_socket_file_descriptor << std::endl;
-
-    struct client cur_client;
-    cur_client.fid = new_client_socket_file_descriptor;
-    client_vector->push_back(cur_client);
-
-    int a = 6;
-
+    client_maps->insert({new_client_socket_file_descriptor, "default_client_name"});
 };
 
 void serverStdInput(){
@@ -92,23 +86,74 @@ void serverStdInput(){
 };
 
 
-
-void handleClientRequest(int fid, std::vector<client>* client_vector){
-    std::vector<struct client> client_vector2 = *client_vector;
-    std::pair<std::string,int> a= read_data_from_socket(fid);
+void handleClientRequest(int fid, std::map<int, std::string> * client_map)
+{
+    std::pair<std::string,int> a = read_data_from_socket(fid);
     if (a.second)
     {
         std::cout << "server recognized disconnection \n";
-        //TODO remove it from vector
+        auto search = client_map->find(fid);
+        if(search != client_map->end())
+        {
+            client_map->erase(search);
+        }
     }
-    std::cout << "server got: "<< a.first;
+
+    std::string aa = a.first;
+    std::cout << "server got: " << std::flush;
+    std::cout << aa << std::endl << std::flush;
 };
+
+void main_loop(int listener_socket, std::map<int, std::string>* client_map)
+{
+    int stillRunning = 1;
+    while (stillRunning)
+    {
+        fd_set clientsfds;
+        fd_set readfds;
+
+        FD_ZERO(&clientsfds);
+        FD_SET(listener_socket, &clientsfds);
+        FD_SET(STDIN_FILENO, &clientsfds);
+
+        for (auto const& x : *client_map)
+        {
+            FD_SET(x.first, &clientsfds);
+        }
+        readfds = clientsfds;
+        if (select(MAX_CLIENTS+1, &readfds, NULL,NULL, NULL) < 0)
+        {
+            terminateServer();
+            exit(1);
+        }
+
+        if (FD_ISSET(listener_socket, &readfds))
+        {
+            //will also add the client to the clientsfds
+            connectNewClient(listener_socket, client_map);
+            continue;
+        }
+
+        if (FD_ISSET(STDIN_FILENO, &readfds))
+        {
+            serverStdInput();
+        }
+
+        for (auto const& x : *client_map)
+        {
+            int client_fid = x.first;
+            if(FD_ISSET(client_fid, &readfds))
+            {
+                handleClientRequest(client_fid, client_map);
+            }
+        }
+    }
+}
 
 
 int main(int argc, char *argv[])
 {
-
-    std::vector<client> client_vector;
+    std::map<int, std::string> client_map;
 
     //input validation
     if ((argc != 2) )
@@ -152,57 +197,14 @@ int main(int argc, char *argv[])
     if (bind(server_socket_file_descriptor , (struct sockaddr *)&server_socket_address_object , sizeof(struct
             sockaddr_in)) < 0)
     {
-        std::cout << std::strerror(errno) << "\nport number must lower than 1024 LOL!" <<std::endl;
+        std::cout << std::strerror(errno) << "\nport number is not avaiable" <<std::endl;
         close(server_socket_file_descriptor);
         return(-1);
     }
 
     listen(server_socket_file_descriptor, MAX_PENDING_CONNECTIONS);
 
-
-    int stillRunning = 1;
-    while (stillRunning)
-    {
-        FD_ZERO(&clientsfds);
-        FD_SET(server_socket_file_descriptor, &clientsfds);
-        FD_SET(STDIN_FILENO, &clientsfds);
-        int  a = client_vector.size();
-        if (a){
-            int b = client_vector[0].fid;
-            int c = 7;
-        }
-        for (int i=0; i<client_vector.size(); i++)
-        {
-            FD_SET(client_vector[i].fid, &clientsfds);
-        }
-        readfds = clientsfds;
-        if (select(MAX_CLIENTS+1, &readfds, NULL,NULL, NULL) < 0)
-        {
-            terminateServer();
-            return -1;
-        }
-
-        if (FD_ISSET(server_socket_file_descriptor, &readfds))
-        {
-            //will also add the client to the clientsfds
-            connectNewClient(server_socket_file_descriptor, &client_vector);
-            continue;
-        }
-
-        if (FD_ISSET(STDIN_FILENO, &readfds))
-        {
-            serverStdInput();
-        }
-
-        for (int i=0; i<client_vector.size(); i++)
-        {
-            int client_fid = client_vector[i].fid;
-            if(FD_ISSET(client_fid, &readfds))
-            {
-                handleClientRequest(client_fid, &client_vector);
-            }
-        }
-    }
+    main_loop(server_socket_file_descriptor, &client_map);
 
     return 0;
 }
