@@ -139,7 +139,7 @@ int call_socket(char *hostname, unsigned short portnum) {
     memcpy(&server_socket_address_object.sin_addr , hp->h_addr , (size_t)hp->h_length);
     server_socket_address_object.sin_port = htons((u_short)portnum);
 
-    std::cout << "server_socket_address_object initialized, with address: "<< inet_ntoa(server_socket_address_object.sin_addr)<< " port: "<< ntohs(server_socket_address_object.sin_port)  << std::endl;
+//    std::cout << "server_socket_address_object initialized, with address: "<< inet_ntoa(server_socket_address_object.sin_addr)<< " port: "<< ntohs(server_socket_address_object.sin_port)  << std::endl;
 
     if ((client_socket_file_descriptor = socket(hp->h_addrtype, SOCK_STREAM, 0)) < 0) {
         return(-1);
@@ -148,7 +148,6 @@ int call_socket(char *hostname, unsigned short portnum) {
     if (connect(client_socket_file_descriptor, (struct sockaddr *)&server_socket_address_object , sizeof(server_socket_address_object)) < 0)
     {
         close(client_socket_file_descriptor);
-        std::cout << std::strerror(errno) <<std::endl;
         return(-1);
     }
 
@@ -186,7 +185,7 @@ void main_loop(int server_socket, std::string client_name)
         readfds = clientsfds;
         if (select(MAX_CLIENTS+1, &readfds, NULL,NULL, NULL) < 0)
         {
-            std::cout << "client terminating on error: " << std::endl << std::flush;
+            print_fail_connection();
             exit(1);
         }
 
@@ -266,7 +265,7 @@ int main(int argc, char *argv[])
 
     //hostent initialization
     struct hostent *h = gethostbyname(ip_address);
-    if (h == nullptr) { print_error("gethostbyname", errno); exit(1);}
+    if (h == nullptr) { print_fail_connection(); exit(1);}
 
     //connect to server socket
     int client_socket_fid = call_socket(h->h_name, port_num);

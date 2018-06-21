@@ -3,10 +3,42 @@ Daniel Braun (201251519), Sineen Nawatha (200904803)
 EX: 4
 
 FILES:
-
+whatsappServer.cpp 
+whatsappClient.cpp 
+whatsappio.h 
+whatsappio.cpp 
+ex4_utils.cpp 
+ex4_utils.h 
 
 REMARKS:
 
+whatsappio.cpp  has been adapted to our implementation (parse_command not expecting \n at the end of message)
+
 ANSWERS:
 
+1.
+first we will change the parse_command to include leave_group 
+Client changes:
+	is that it will wait for answer from server and print the according message
 
+Server change :
+	our implementation has every group as a set, and a map that maps group names to their
+	corresponding set.  
+	so incase of group_leave we find the group set (report error if do not exists) 
+	see if the client is there (if not send an error) 
+	and then remove the client name from this particular group set. close it if it reaches 0 and remove from the map
+
+
+2.
+when a servers could handle a lot of clients in parrallel and also not using threads, it may be occupied when some client send a message
+so it may miss some data we need to make sure the data is intact.
+moreover the content is not real-time oriented as video or audio, we take the performance hit in orer to make sure the text is readable 
+
+3.
+skype for VOIP  
+netflix for video streaming,
+UDP is preferable because there is no meaning for data lost as it is no longer relevant to the user as he is consuming the data in real-time.
+
+4. 
+clients can save a data base of their own, and when they connect to the server for the first time they send the server (along with their name) all the saved data they posses,
+the server then parse their data and build its structure according to it.
