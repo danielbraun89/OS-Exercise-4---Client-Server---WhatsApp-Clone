@@ -17,6 +17,7 @@
 #include <cstring>
 #include <vector>
 
+#define MAX_CLIENTS 200
 
 std::pair<std::string,int> read_data_from_socket(int fid);
 int write_data_to_socket(int fid, std::string input_str);

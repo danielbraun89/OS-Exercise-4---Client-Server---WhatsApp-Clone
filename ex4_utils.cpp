@@ -40,7 +40,6 @@ int write_data_to_socket(int fid, std::string input_str)
 {
     const char *buf = input_str.c_str();
     auto n = (int)input_str.length();
-    std::cout << "writing data\n";
     int bcount,          /* counts bytes read */
             br;          /* bytes read this pass */
 
@@ -49,12 +48,11 @@ int write_data_to_socket(int fid, std::string input_str)
     while (bcount < n) {             /* loop until full buffer */
         if ((br = write(fid,buf,n-bcount)) > 0)
         {
-            std::cout << "write_data!\n";
             bcount += br;                /* increment byte counter */
             buf += br;                   /* move buffer ptr for next read */
         }
         if (br < 0) {
-            perror("write_data");        /* signal an error to the caller */
+            perror("write_data error");        /* signal an error to the caller */
             return(-1);
         }
     }
