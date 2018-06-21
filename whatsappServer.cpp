@@ -259,7 +259,7 @@ void handleClientRequest(std::string client_name, std::map<std::string, int>  * 
     std::pair<std::string,int> a = read_data_from_socket(fid);
     if (a.second)
     {
-        std::cout << "server recognized disconnection \n";
+//        std::cout << "server recognized disconnection \n";
         terminateClient(client_name, client_map);
     }
     else
@@ -387,8 +387,6 @@ int main(int argc, char *argv[])
     memcpy(&server_sockaddr_in.sin_addr, hp->h_addr, (size_t)hp->h_length);
     server_sockaddr_in.sin_port= htons(portnum);
     server_sockaddr_in.sin_addr.s_addr = INADDR_ANY;
-
-    std::cout << "server_socket_address_object initialized, with address: "<< inet_ntoa(server_sockaddr_in.sin_addr)<< " port: "<< ntohs(server_sockaddr_in.sin_port)  << std::endl;
 
     /* create socket */
     int server_socket_fid = socket(AF_INET, SOCK_STREAM, 0);
