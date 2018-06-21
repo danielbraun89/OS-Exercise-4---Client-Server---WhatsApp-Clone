@@ -14,39 +14,14 @@
 #include <cerrno>
 #include <clocale>
 #include <cstring>
-#define MAXHOSTNAME 30
+#include <sstream>
 
 char message_buffer[WA_MAX_MESSAGE];
 
-//int read_data(int s, char *buf, int n) {
-//    int bcount;
-///* counts bytes read */
-//    int br;
-///* bytes read this pass */
-//    bcount= 0; br= 0;
-//    while (bcount < n) { /* loop until full buffer */
-//        br = (int)read(s, buf, n-bcount);
-//        if (br > 0) {
-//            bcount += br;
-//            if (buf[strlen(buf) - 1] == '\n')
-//            {
-//                buf += br;
-//                return(bcount);
-//            }
-//            buf += br;
-//        }
-//        if (br < 1) {
-//            return(-1);
-//        }
-//    }
-//    return(bcount);
-//}
-
-
-void clientStdInput(int server_socket)
+void clientStdInput(int server_socket, std::string client_name)
 {
     std::pair<std::string,int> a = read_data_from_socket(STDIN_FILENO);
-    std::string str2 ("exit\n");
+    std::string str2 ("exit");
     if ((a.first.compare(str2)) == 0)
     {
         write_data_to_socket(server_socket,"exit");
@@ -56,31 +31,96 @@ void clientStdInput(int server_socket)
     }
     else
     {
-        write_data_to_socket(server_socket,a.first);
+        command_type cur_command_type;
+        std::string cur_message;
+        std::string cur_send_to_name;
+        std::vector<std::string> clients;
+        parse_command(a.first, cur_command_type, cur_send_to_name, cur_message, clients);
+
+
+        if (cur_command_type==SEND)
+        {
+            write_data_to_socket(server_socket, a.first);
+            std::pair<std::string, int> rt = read_data_from_socket(server_socket);
+            if (rt.second)
+            {
+                print_send(false, false, client_name, cur_send_to_name, cur_message);
+            }
+            else
+            {
+                if (rt.first == "1")
+                {
+                    print_send(false, false, client_name, cur_send_to_name, cur_message);
+                }
+                else if (rt.first == "0")
+                {
+                    print_send(false, true, client_name, cur_send_to_name, cur_message);
+                }
+            }
+        }
+        else if (cur_command_type==CREATE_GROUP)
+        {
+            write_data_to_socket(server_socket, a.first);
+            std::pair<std::string, int> rt = read_data_from_socket(server_socket);
+            if (rt.second)
+            {
+                print_create_group(false, false, client_name, cur_send_to_name);
+            }
+            else
+            {
+                if (rt.first == "1")
+                {
+                    print_create_group(false, false, client_name, cur_send_to_name);
+                }
+                else if (rt.first == "0")
+                {
+                    print_create_group(false, true, client_name, cur_send_to_name);
+                }
+            }
+        }
+        else if (cur_command_type==INVALID)
+        {
+            print_invalid_input();
+        }
+        else if (cur_command_type==WHO)
+        {
+            write_data_to_socket(server_socket, a.first);
+            std::pair<std::string, int> rt = read_data_from_socket(server_socket);
+            if (rt.second)
+            {
+                std::vector<std::string> aa;
+                print_who_client(false, aa);
+            }
+            else
+            {
+                if (rt.first == "1")
+                {
+                    std::vector<std::string> aa;
+                    print_who_client(false, aa);
+                }
+                else
+                {
+                    std::stringstream ss(rt.first);
+                    std::vector<std::string> result;
+                    while( ss.good() )
+                    {
+                        std::string substr;
+                        getline( ss, substr, ',' );
+                        if (!(substr.empty()))
+                        {
+                            result.push_back( substr );
+                        }
+
+                    }
+                    print_who_client(true, result);
+                }
+            }
+//            void print_who_client(bool success, const std::vector<std::string>& clients);
+
+        }
     }
 };
 
-//int write_data(int s,const char *buf, int n)
-//
-//{ int bcount,          /* counts bytes read */
-//        br;              /* bytes read this pass */
-//
-//    bcount= 0;
-//    br= 0;
-//    while (bcount < n) {             /* loop until full buffer */
-//        if ((br= write(s,buf,n-bcount)) > 0)
-//        {
-//            std::cout << "write_data!\n";
-//            bcount += br;                /* increment byte counter */
-//            buf += br;                   /* move buffer ptr for next read */
-//        }
-//        if (br < 0) {
-//            perror("write_data");        /* signal an error to the caller */
-//            return(-1);
-//        }
-//    }
-//    return(bcount);
-//}
 
 
 
@@ -127,11 +167,11 @@ void handleServerRequest(int server_socket)
     }
     else
     {
-        //todo parse message
+        std::cout << a.first << std::endl;
     }
 }
 
-void main_loop(int server_socket)
+void main_loop(int server_socket, std::string client_name)
 {
     int stillRunning = 1;
     while (stillRunning)
@@ -158,12 +198,12 @@ void main_loop(int server_socket)
 
         if (FD_ISSET(STDIN_FILENO, &readfds))
         {
-            clientStdInput(server_socket);
+            clientStdInput(server_socket, client_name);
         }
     }
 }
 
-bool validate_arguments(int argc, char *argv[])
+void validate_arguments(int argc, char *argv[])
 {
     //input validation
     if ((argc != 4) )
@@ -172,7 +212,7 @@ bool validate_arguments(int argc, char *argv[])
         exit(1);
     }
     char* p;
-    long converted = strtol(argv[argc-1], &p, 10);
+    strtol(argv[argc-1], &p, 10);
     if (*p) {
         print_server_usage();
         exit(1);
@@ -186,10 +226,6 @@ bool validate_arguments(int argc, char *argv[])
 }
 
 
-std::pair<unsigned short,char*> parse_arguments(int argc, char *argv[])
-{
-    return {(unsigned short)strtol(argv[argc-1], nullptr, 10), argv[2]};
-};
 
 void register_with_server(int server_fid, std::string name)
 {
@@ -223,7 +259,6 @@ void register_with_server(int server_fid, std::string name)
 int main(int argc, char *argv[])
 {
     validate_arguments(argc, argv); // make sure usage is valid
-    std::pair<unsigned short,char*> arguments = parse_arguments(argc, argv); // <port num, string of ip>
     //parsing arguments
     std::string client_name (argv[1]);
     char* ip_address = argv[2];
@@ -242,7 +277,7 @@ int main(int argc, char *argv[])
     //handle errors like name in use
 
     // starting main loop
-    main_loop(client_socket_fid);
+    main_loop(client_socket_fid, client_name);
 
     return 0;
 }

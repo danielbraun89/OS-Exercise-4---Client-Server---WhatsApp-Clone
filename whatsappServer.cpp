@@ -21,6 +21,7 @@
 #include <vector>
 #include <algorithm>
 #include <map>
+#include<set>
 int server_socket_fid = -1;
 int write_data(int s,const char *buf, int n)
 
@@ -94,6 +95,7 @@ int connectNewClient(int server_socket_fid, std::map<std::string, int>  * client
     if (a.second)
     {
         close(new_client_socket_fid);
+        return EXIT_FAILURE;
     }
     else
     {
@@ -103,12 +105,15 @@ int connectNewClient(int server_socket_fid, std::map<std::string, int>  * client
             //element found;
             write_data_to_socket(new_client_socket_fid, "1");
             close(new_client_socket_fid);
+            return EXIT_FAILURE;
+
         }
         else
         {
             client_maps->insert({ a.first, new_client_socket_fid});
             print_connection_server(a.first);
             write_data_to_socket(new_client_socket_fid, "0");
+            return EXIT_SUCCESS;
         }
     }
 
@@ -117,26 +122,140 @@ int connectNewClient(int server_socket_fid, std::map<std::string, int>  * client
 void serverStdInput(std::map<std::string, int>  * client_maps){
     std::pair<std::string,int> a = read_data_from_socket(STDIN_FILENO);
 //    std::cout << "read from stdin: " << message_buffer << " with len: " << str1.length() << std::endl;
-    std::string str2 ("EXIT\n");
-
+    std::string str2 ("EXIT");
     if ((a.first.compare(str2)) == 0)
     {
-//        for (auto const& x : *client_maps)
-//        {
-//            int client_fid = x.second;
-//            write_data_to_socket(client_fid, "EXIT");
-//        }
         print_exit();
         close_all_sockets(client_maps);
         exit(EXIT_SUCCESS);
     }
+    else
+    {
+        print_invalid_input();
+    }
 
 };
 
-
-void handleClientRequest(std::string client_name, std::map<std::string, int>  * client_map)
+int handleSend(std::string& sender_name, std::string& message, std::string& recieving_name, std::map<std::string, int>  * client_map,
+                std::map<std::string, std::set<std::string>> * group_map)
 {
-    int fid = client_map->at(client_name);
+    int sending_fid = client_map->operator[](sender_name);
+
+    // check if recieving name is valid
+    if (sender_name == recieving_name)
+    {
+        print_send(true, false, sender_name, recieving_name, message);
+        write_data_to_socket(sending_fid, "1");
+        return EXIT_FAILURE;
+    }
+
+    if (client_map->find(recieving_name) !=  client_map->end())
+    {
+        int recieving_fid = client_map->operator[](recieving_name);
+        //sending the message
+        int rt = write_data_to_socket(recieving_fid, sender_name + std::string(": ") +message);
+        //check success
+        if (rt == -1)
+        {
+            print_send(true, false, sender_name, recieving_name, message);
+            write_data_to_socket(sending_fid, "1");
+            return EXIT_FAILURE;
+        }
+        else
+        {
+            print_send(true, true, sender_name, recieving_name, message);
+            write_data_to_socket(sending_fid, "0");
+            return EXIT_SUCCESS;
+        }
+    }
+
+    bool success = false;
+    //check if the group exists
+    if (group_map->find(recieving_name) != group_map->end())
+    {
+        //check if sender is inside the group
+        if (group_map->at(recieving_name).find(sender_name) != group_map->at(recieving_name).end())
+        {
+            for (auto const& x : group_map->at(recieving_name))
+            {
+                //make sure you dont send to the sender as well
+                if (x != sender_name)
+                {
+                    write_data_to_socket(client_map->operator[](x), sender_name + std::string(": ") + message);
+                    success = true;
+                }
+            }
+        }
+    }
+    //print and send the correct feedback
+    if (success)
+    {
+        print_send(true, true, sender_name, recieving_name, message);
+        write_data_to_socket(sending_fid, "0");
+        return EXIT_SUCCESS;
+    }
+    else
+    {
+        print_send(true, false, sender_name, recieving_name, message);
+        write_data_to_socket(sending_fid, "1");
+        return EXIT_FAILURE;
+    }
+}
+
+
+int handleCreateGroup(std::string& sender_name, std::vector<std::string>& clients_to_include, std::string& group_name, std::map<std::string, int>  * client_map,
+                       std::map<std::string, std::set<std::string>> * group_map)
+{
+    int sending_fid = client_map->operator[](sender_name);
+    // check if group name is not taken as client name
+    if (client_map->find(group_name) != client_map->end())
+    {
+        print_create_group(true, false, sender_name, group_name);
+        write_data_to_socket(sending_fid, "1");
+        return EXIT_FAILURE;
+    }
+    // check if group name is not taken as other group name
+    if (group_map->find(group_name) != group_map->end())
+    {
+        print_create_group(true, false, sender_name, group_name);
+        write_data_to_socket(sending_fid, "1");
+        return EXIT_FAILURE;
+    }
+
+    //make a set out of everyone
+    std::set<std::string> group_client_set;
+    for (auto const& x : clients_to_include)
+    {
+        group_client_set.insert(x);
+    }
+    group_client_set.insert(sender_name);
+    //make sure there are at least 2 clients
+    if (group_client_set.size() < 2)
+    {
+        print_create_group(true, false, sender_name, group_name);
+        write_data_to_socket(sending_fid, "1");
+        return EXIT_FAILURE;
+    }
+    // make sure they all valid clients
+    for (auto const& x : group_client_set)
+    {
+        if (client_map->find(x) == client_map->end())
+        {
+            print_create_group(true, false, sender_name, group_name);
+            write_data_to_socket(sending_fid, "1");
+            return EXIT_FAILURE;
+        }
+    }
+
+    group_map->insert({group_name, group_client_set});
+    print_create_group(true, true, sender_name, group_name);
+    write_data_to_socket(sending_fid, "0");
+    return EXIT_FAILURE;
+}
+
+void handleClientRequest(std::string client_name, std::map<std::string, int>  * client_map, std::map<std::string, std::set<std::string>> *group_map)
+{
+    int fid = client_map->operator[](client_name);
     std::pair<std::string,int> a = read_data_from_socket(fid);
     if (a.second)
     {
@@ -145,22 +264,39 @@ void handleClientRequest(std::string client_name, std::map<std::string, int>  * 
     }
     else
     {
-        if (a.first == "exit")
+        command_type cur_command_type;
+        std::string cur_message;
+        std::string name;
+        std::vector<std::string> clients;
+        parse_command(a.first, cur_command_type, name, cur_message, clients);
+
+        if (cur_command_type == EXIT)
         {
             print_exit(true, client_name);
             terminateClient(client_name, client_map);
         }
-        else
+        else if (cur_command_type == SEND)
         {
-            std::string aa = a.first;
-            std::cout << "server got: " << std::flush;
-            std::cout << aa << std::endl << std::flush;
+            handleSend(client_name, cur_message, name, client_map, group_map);
         }
-
+        else if (cur_command_type == CREATE_GROUP)
+        {
+            handleCreateGroup(client_name, clients, name, client_map, group_map);
+        }
+        else if (cur_command_type == WHO)
+        {
+            std::string client_str;
+            for (auto const& x : *client_map)
+            {
+                client_str += x.first + ",";
+            }
+            write_data_to_socket(fid, client_str);
+            print_who_server(client_name);
+        }
     }
 };
 
-void main_loop(int listener_socket, std::map<std::string, int> * client_map)
+void main_loop(int listener_socket, std::map<std::string, int> * client_map, std::map<std::string, std::set<std::string>> *group_map )
 {
     int stillRunning = 1;
     while (stillRunning)
@@ -201,13 +337,13 @@ void main_loop(int listener_socket, std::map<std::string, int> * client_map)
             std::string client_name = x.first;
             if(FD_ISSET(client_fid, &readfds))
             {
-                handleClientRequest(client_name, client_map);
+                handleClientRequest(client_name, client_map, group_map);
             }
         }
     }
 }
 
-bool validate_arguments(int argc, char *argv[])
+void validate_arguments(int argc, char *argv[])
 {
     //input validation
     if ((argc != 2) )
@@ -216,7 +352,7 @@ bool validate_arguments(int argc, char *argv[])
         exit(1);
     }
     char* p;
-    long converted = strtol(argv[argc-1], &p, 10);
+    strtol(argv[argc-1], &p, 10);
     if (*p) {
         print_server_usage();
         exit(1);
@@ -236,7 +372,7 @@ int main(int argc, char *argv[])
     validate_arguments(argc, argv);  // make sure usage is valid
     uint16_t portnum = parse_arguments(argc, argv); // port num
     std::map<std::string, int> client_map;  // dynamic map to keep track of clients num and name
-
+    std::map<std::string, std::set<std::string>> group_map;
     //hostent initialization
     struct hostent* hp;
     char myname[MAXHOSTNAME+1];
@@ -264,7 +400,7 @@ int main(int argc, char *argv[])
     int listen_return = listen(server_socket_fid, MAX_PENDING_CONNECTIONS);
     if (listen_return < 0){print_error("listen", errno); exit(1);}
 
-    main_loop(server_socket_fid, &client_map);
+    main_loop(server_socket_fid, &client_map, &group_map);
     return 0;
 }
 

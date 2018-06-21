@@ -31,7 +31,11 @@ std::pair<std::string,int> read_data_from_socket(int fid)
         }
     }
     message_buffer[byteCount+1] = '\0';
-    return {std::string (message_buffer), 0};
+    std::string msg (message_buffer);
+    if (!msg.empty() && msg[msg.length()-1] == '\n') {
+        msg.erase(msg.length()-1);
+    }
+    return {msg, 0};
 }
 
 
